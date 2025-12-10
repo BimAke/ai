@@ -1,0 +1,126 @@
+name: SIS6 - Configure journalling and auditing
+  hosts: all
+  become: true
+
+  vars:
+    journald_storage: "persistent"
+    journald_system_max_use: "500M"
+    journald_runtime_max_use: "100M"
+
+  tasks:
+
+    - name: Ensure systemd-journald is installed (обычно уже есть)
+      package:
+        name: systemd
+        state: present
+
+    - name: Ensure rsyslog is installed (интеграция с классическим логированием)
+      package:
+        name: rsyslog
+        state: present
+
+    - name: Enable and start rsyslog
+      service:
+        name: rsyslog
+        state: started
+        enabled: true
+
+    - name: Configure systemd-journald for persistent logging
+      template:
+        src: templates/journald.conf.j2
+        dest: /etc/systemd/journald.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - restart journald
+
+    - name: Ensure journal directory exists
+      file:
+        path: /var/log/journal
+        state: directory
+        owner: root
+        group: systemd-journal
+        mode: "2755"
+
+    - name: Create /usr/local/bin directory (if not exists)
+      file:
+        path: /usr/local/bin
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install journal-search script
+      copy:
+        src: files/journal-search.sh
+        dest: /usr/local/bin/journal-search
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Install journal-service script
+      copy:
+        src: files/journal-service.sh
+        dest: /usr/local/bin/journal-service
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Install journal-errors-today script
+      copy:
+        src: files/journal-errors-today.sh
+        dest: /usr/local/bin/journal-errors-today
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Install journal-follow-unit script
+      copy:
+        src: files/journal-follow-unit.sh
+        dest: /usr/local/bin/journal-follow-unit
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Install auditd
+      package:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - auditd
+      ignore_errors: true   # на некоторых дистрибутивах имя пакета может отличаться
+
+    - name: Ensure auditd service is enabled and started
+      service:
+        name: auditd
+        state: started
+        enabled: true
+      ignore_errors: true
+
+    - name: Install sudoers audit rules
+      copy:
+        src: files/audit-sudoers.rules
+        dest: /etc/audit/rules.d/sudoers.rules
+        owner: root
+        group: root
+        mode: "0640"
+      notify:
+        - reload audit rules
+
+  handlers:
+    - name: restart journald
+      service:
+        name: systemd-journald
+        state: restarted
+
+    - name: reload audit rules
+    command: augenrules --load
+      notify:
+        - restart auditd
+
+    - name: restart auditd
+      service:
+        name: auditd
+        state: restarted
+      ignore_errors: true
