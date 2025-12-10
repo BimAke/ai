@@ -1,0 +1,5 @@
+# Watch main sudoers file for write and attribute changes
+-w /etc/sudoers -p wa -k sudoers_change
+
+# Watch sudoers.d directory for write and attribute changes
+-w /etc/sudoers.d/ -p wa -k sudoers_change
